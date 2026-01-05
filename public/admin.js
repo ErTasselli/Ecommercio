@@ -1,5 +1,6 @@
 const $ = (s) => document.querySelector(s);
 const fmtEUR = (cents) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100);
+let CATEGORIES = [];
 
 async function checkSession() {
   try {
@@ -9,6 +10,7 @@ async function checkSession() {
       $('#loginSection').classList.add('hidden');
       $('#adminSection').classList.remove('hidden');
       await loadSettings();
+      await loadCategories();
       await loadProducts();
     }
   } catch {}
@@ -67,6 +69,62 @@ async function saveSettings(e) {
   } catch { msg.textContent = '❌ Network error'; }
 }
 
+// Categories
+async function loadCategories() {
+  try {
+    const res = await fetch('/api/categories');
+    CATEGORIES = await res.json();
+    renderCategories();
+    populateCategorySelects();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderCategories() {
+  const box = $('#categoriesList');
+  if (!box) return;
+  if (!Array.isArray(CATEGORIES) || !CATEGORIES.length) {
+    box.innerHTML = '<div class="msg">No categories yet. Create one above ➕</div>';
+    return;
+  }
+  box.innerHTML = CATEGORIES.map(c => `
+    <div class="row">
+      <div><input type="text" value="${escapeHtml(c.name)}" data-cat-name="${c.id}" /></div>
+      <div class="actions">
+        <button class="btn success" data-cat-save="${c.id}">💾</button>
+        <button class="btn danger" data-cat-del="${c.id}">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+  box.querySelectorAll('[data-cat-save]').forEach(b => b.addEventListener('click', () => saveCategory(b)));
+  box.querySelectorAll('[data-cat-del]').forEach(b => b.addEventListener('click', () => delCategory(b)));
+}
+
+function populateCategorySelects() {
+  const createSel = $('#createCategorySelect');
+  if (createSel) {
+    createSel.innerHTML = ['<option value="">No category</option>'].concat(
+      CATEGORIES.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`)
+    ).join('');
+  }
+}
+
+async function saveCategory(btn) {
+  const id = Number(btn.getAttribute('data-cat-save'));
+  const inp = document.querySelector(`[data-cat-name="${id}"]`);
+  const name = inp.value.trim();
+  const res = await fetch(`/api/categories/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+  if (res.ok) loadCategories(); else alert('Save error');
+}
+
+async function delCategory(btn) {
+  const id = Number(btn.getAttribute('data-cat-del'));
+  if (!confirm('Delete this category? Products will be uncategorized.')) return;
+  const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+  if (res.ok) loadCategories(); else alert('Delete error');
+}
+
 async function loadProducts() {
   const box = $('#adminProducts');
   box.innerHTML = '<div class="msg">Loading products...</div>';
@@ -77,18 +135,28 @@ async function loadProducts() {
       box.innerHTML = '<div class="msg">No products yet. Create one on the left ➕</div>';
       return;
     }
-    box.innerHTML = items.map(p => `
-      <div class="inline">
-        <input type="text" value="${escapeHtml(p.title)}" data-field="title" data-id="${p.id}">
-        <input class="price-eur" type="number" step="0.01" value="${(p.price_cents/100).toFixed(2)}" data-field="price">
-        <input type="text" value="${escapeHtml(p.image_url || '')}" data-field="image_url">
-        <div class="actions">
-          <button class="btn success" data-save="${p.id}">💾</button>
-          <button class="btn danger" data-del="${p.id}">🗑️</button>
+    box.innerHTML = items.map(p => {
+      const opts = ['<option value="">No category</option>'].concat(
+        CATEGORIES.map(c => `<option value="${c.id}" ${p.category_id===c.id? 'selected':''}>${escapeHtml(c.name)}</option>`)
+      ).join('');
+      return `
+      <div class="card">
+        <div class="inline" style="align-items:start;">
+          <input type="text" value="${escapeHtml(p.title)}" data-field="title" data-id="${p.id}">
+          <input class="price-eur" type="number" step="0.01" value="${(p.price_cents/100).toFixed(2)}" data-field="price">
+          <select data-field="category_id">${opts}</select>
+          <div class="actions">
+            <button class="btn success" data-save="${p.id}">💾</button>
+            <button class="btn danger" data-del="${p.id}">🗑️</button>
+          </div>
+          <input type="text" value="${escapeHtml(p.description || '')}" data-field="description" placeholder="Description" style="grid-column: 1 / -1;">
+          <div style="grid-column: 1 / -1; display:flex; gap:10px; align-items:center;">
+            <img src="${p.image_url || ''}" alt="${escapeHtml(p.title)}" style="width:80px;height:60px;object-fit:cover;border:1px solid var(--border);border-radius:8px;background:#0c0d12;" />
+            <input type="file" accept="image/*" data-image="${p.id}" />
+          </div>
         </div>
-        <input type="text" value="${escapeHtml(p.description || '')}" data-field="description" placeholder="Description" style="grid-column: 1 / -1;">
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
 
     box.querySelectorAll('[data-save]').forEach(btn => btn.addEventListener('click', () => saveProduct(btn)));
     box.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', () => delProduct(btn)));
@@ -100,16 +168,20 @@ async function loadProducts() {
 
 async function saveProduct(btn) {
   const id = Number(btn.getAttribute('data-save'));
-  const parent = btn.closest('.inline');
-  const inputs = parent.querySelectorAll('input[data-field]');
-  const payload = { };
+  const card = btn.closest('.card');
+  const inputs = card.querySelectorAll('[data-field]');
+  const form = new FormData();
   inputs.forEach(inp => {
     const f = inp.getAttribute('data-field');
-    if (f === 'price') payload.price_cents = Math.round(Number(inp.value || 0) * 100);
-    else payload[f] = inp.value;
+    if (f === 'price') form.set('price_cents', String(Math.round(Number(inp.value || 0) * 100)));
+    else form.set(f, inp.value);
   });
-  const res = await fetch(`/api/products/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  if (!res.ok) alert('Save error');
+  const fileInp = card.querySelector(`[input][data-image="${id}"]`) || card.querySelector(`[data-image="${id}"]`);
+  if (fileInp && fileInp.files && fileInp.files[0]) {
+    form.set('image', fileInp.files[0]);
+  }
+  const res = await fetch(`/api/products/${id}`, { method: 'PUT', body: form });
+  if (!res.ok) alert('Save error'); else loadProducts();
 }
 
 async function delProduct(btn) {
@@ -122,14 +194,13 @@ async function delProduct(btn) {
 async function createProduct(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const title = fd.get('title');
-  const description = fd.get('description') || '';
-  const price_cents = Math.round(Number(fd.get('price') || 0) * 100);
-  const image_url = fd.get('image_url') || '';
+  const price = Number(fd.get('price') || 0);
+  fd.delete('price');
+  fd.set('price_cents', String(Math.round(price * 100)));
   const msg = $('#createMsg');
   msg.textContent = 'Creating...';
   try {
-    const res = await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, description, price_cents, image_url }) });
+    const res = await fetch('/api/products', { method: 'POST', body: fd });
     if (res.ok) {
       e.target.reset();
       msg.textContent = '✅ Created';
@@ -157,5 +228,14 @@ window.addEventListener('DOMContentLoaded', () => {
   if (settingsForm) settingsForm.addEventListener('submit', saveSettings);
   const createForm = document.querySelector('#createForm');
   if (createForm) createForm.addEventListener('submit', createProduct);
+  const createCategoryForm = document.querySelector('#createCategoryForm');
+  if (createCategoryForm) createCategoryForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const name = String(fd.get('name') || '').trim();
+    if (!name) return;
+    const res = await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    if (res.ok) { e.target.reset(); loadCategories(); } else alert('Error creating category');
+  });
   checkSession();
 });

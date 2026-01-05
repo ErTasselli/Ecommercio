@@ -7,6 +7,8 @@ const morgan = require('morgan');
 const cors = require('cors');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const multer = require('multer');
 
 // Stripe
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
@@ -31,6 +33,17 @@ app.use(session({
 
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
+// Uploads directory
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    cb(null, Date.now() + '_' + safe);
+  }
+});
+const upload = multer({ storage });
 
 // Database init
 const db = new Database(path.join(__dirname, 'data.sqlite'));
@@ -58,12 +71,25 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL DEFAULT 'user', -- 'user' | 'admin'
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
+
+// Migrations: add category_id to products if missing
+const productColumns = db.prepare("PRAGMA table_info(products)").all();
+const hasCategoryId = productColumns.some(c => c.name === 'category_id');
+if (!hasCategoryId) {
+  db.prepare('ALTER TABLE products ADD COLUMN category_id INTEGER').run();
+}
 
 // Default site name if not set
 const siteNameRow = db.prepare("SELECT value FROM settings WHERE key = 'siteName'").get();
 if (!siteNameRow) {
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('siteName', ?)").run('🛍️ Ecommercio');
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('siteName', ?)").run('Ecommercio');
 }
 
 // Seed default admin account if not exists (admin/admin)
@@ -133,6 +159,41 @@ app.post('/api/settings', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Routes: categories CRUD (admin)
+app.get('/api/categories', (_req, res) => {
+  const items = db.prepare('SELECT * FROM categories ORDER BY name ASC').all();
+  res.json(items);
+});
+
+app.post('/api/categories', requireAdmin, (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Invalid name' });
+  try {
+    const info = db.prepare('INSERT INTO categories (name) VALUES (?)').run(String(name).trim());
+    const created = db.prepare('SELECT * FROM categories WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json(created);
+  } catch (e) {
+    return res.status(409).json({ error: 'Category already exists' });
+  }
+});
+
+app.put('/api/categories/:id', requireAdmin, (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Invalid name' });
+  const existing = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Category not found' });
+  db.prepare('UPDATE categories SET name = ? WHERE id = ?').run(String(name).trim(), req.params.id);
+  const updated = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+  res.json(updated);
+});
+
+app.delete('/api/categories/:id', requireAdmin, (req, res) => {
+  // Set category_id to NULL for products in this category
+  db.prepare('UPDATE products SET category_id = NULL WHERE category_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 // Routes: products CRUD
 app.get('/api/products', (req, res) => {
   const items = db.prepare('SELECT * FROM products ORDER BY created_at DESC').all();
@@ -145,29 +206,33 @@ app.get('/api/products/:id', (req, res) => {
   res.json(item);
 });
 
-app.post('/api/products', requireAdmin, (req, res) => {
-  const { title, description, price_cents, image_url } = req.body;
+app.post('/api/products', requireAdmin, upload.single('image'), (req, res) => {
+  const { title, description, price_cents, category_id } = req.body;
   if (!title || price_cents === undefined) return res.status(400).json({ error: 'Missing data' });
   const price = Number(price_cents);
   if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: 'Invalid price' });
-  const info = db.prepare('INSERT INTO products (title, description, price_cents, image_url) VALUES (?, ?, ?, ?)')
-    .run(title, description || '', price, image_url || '');
+  const image_url = req.file ? `/uploads/${req.file.filename}` : '';
+  const catId = category_id ? Number(category_id) : null;
+  const info = db.prepare('INSERT INTO products (title, description, price_cents, image_url, category_id) VALUES (?, ?, ?, ?, ?)')
+    .run(title, description || '', price, image_url, catId);
   const created = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(created);
 });
 
-app.put('/api/products/:id', requireAdmin, (req, res) => {
-  const { title, description, price_cents, image_url } = req.body;
+app.put('/api/products/:id', requireAdmin, upload.single('image'), (req, res) => {
+  const { title, description, price_cents, image_url, category_id } = req.body;
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Product not found' });
   const price = price_cents !== undefined ? Number(price_cents) : existing.price_cents;
   if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: 'Invalid price' });
-  db.prepare('UPDATE products SET title = ?, description = ?, price_cents = ?, image_url = ? WHERE id = ?')
+  const newImage = req.file ? `/uploads/${req.file.filename}` : undefined;
+  db.prepare('UPDATE products SET title = ?, description = ?, price_cents = ?, image_url = ?, category_id = ? WHERE id = ?')
     .run(
       title !== undefined ? title : existing.title,
       description !== undefined ? description : existing.description,
       price,
-      image_url !== undefined ? image_url : existing.image_url,
+      newImage !== undefined ? newImage : (image_url !== undefined ? image_url : existing.image_url),
+      category_id !== undefined ? (category_id ? Number(category_id) : null) : existing.category_id,
       req.params.id
     );
   const updated = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);

@@ -41,6 +41,7 @@ window.addEventListener('DOMContentLoaded', () => {
   $('#year').textContent = new Date().getFullYear();
   updateCartCount();
   loadSettings();
+  checkAdminLink();
   loadProducts();
   setupCartDrawer();
 });
@@ -53,6 +54,18 @@ async function loadSettings() {
       document.title = `${data.siteName}`;
       const el = $('#siteName');
       if (el) el.textContent = data.siteName;
+    }
+  } catch {}
+}
+
+async function checkAdminLink() {
+  try {
+    const res = await fetch('/api/session');
+    const data = await res.json();
+    const link = document.getElementById('adminLink');
+    if (link) {
+      if (data.user && data.user.role === 'admin') link.classList.remove('hidden');
+      else link.classList.add('hidden');
     }
   } catch {}
 }

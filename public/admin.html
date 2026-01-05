@@ -45,8 +45,22 @@
         </div>
 
         <div class="card">
+          <h2>Categories 🗂️</h2>
+          <form id="createCategoryForm" class="form-grid" style="margin-bottom:10px;">
+            <label>
+              <span>Name</span>
+              <input type="text" name="name" required />
+            </label>
+            <button class="btn primary" type="submit">Add Category ➕</button>
+          </form>
+          <div id="categoriesList" class="list"></div>
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-top:16px;">
+        <div class="card">
           <h2>New Product ➕</h2>
-          <form id="createForm" class="form-grid">
+          <form id="createForm" class="form-grid" enctype="multipart/form-data">
             <label>
               <span>Title</span>
               <input type="text" name="title" required />
@@ -60,8 +74,12 @@
               <input type="number" step="0.01" name="price" required />
             </label>
             <label>
-              <span>Image (URL)</span>
-              <input type="url" name="image_url" />
+              <span>Category</span>
+              <select name="category_id" id="createCategorySelect"></select>
+            </label>
+            <label>
+              <span>Image (upload)</span>
+              <input type="file" name="image" accept="image/*" />
             </label>
             <button class="btn primary" type="submit">Create 🚀</button>
           </form>

@@ -12,7 +12,6 @@
 <body>
   <header class="header">
     <div class="brand">
-      <span class="logo">🛍️</span>
       <h1 id="siteName">Ecommercio</h1>
     </div>
     <nav class="nav">
@@ -21,8 +20,8 @@
       <a href="#about" class="btn ghost">About Us</a>
       <a href="#contact" class="btn ghost">Contact Us</a>
       <a href="/auth.html" class="btn ghost">Sign In / Sign Up</a>
-      <a href="/admin.html" class="btn ghost">Admin</a>
-      <button id="cartBtn" class="btn primary">🧺 Cart <span id="cartCount" class="badge">0</span></button>
+      <a id="adminLink" href="/admin.html" class="btn ghost hidden">Admin</a>
+      <button id="cartBtn" class="btn primary">🛒 Cart <span id="cartCount" class="badge">0</span></button>
     </nav>
   </header>
 
@@ -54,7 +53,7 @@
 
   <div id="cartDrawer" class="cart-drawer">
     <div class="cart-header">
-      <h3>🧺 Your cart</h3>
+      <h3>🛒 Your cart</h3>
       <button id="closeCart" class="icon-btn">✖️</button>
     </div>
     <div id="cartItems" class="cart-items"></div>

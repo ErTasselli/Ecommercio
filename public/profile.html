@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>👤 Profile - Ecommercio</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <h1>Ecommercio</h1>
+    </div>
+    <nav class="nav">
+      <a href="/" class="btn ghost">Home</a>
+      <button id="logoutBtn" class="btn danger">Logout ✖️</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Your Profile</h2>
+      <form id="profileForm" class="form-grid">
+        <div class="grid two">
+          <label>
+            <span>First name</span>
+            <input type="text" name="first_name" />
+          </label>
+          <label>
+            <span>Last name</span>
+            <input type="text" name="last_name" />
+          </label>
+        </div>
+
+        <label>
+          <span>Date of birth</span>
+          <input type="date" name="birth_date" />
+        </label>
+
+        <h3 class="section-title">Shipping address</h3>
+        <label>
+          <span>Address</span>
+          <input type="text" name="shipping_address" />
+        </label>
+        <label>
+          <span>ZIP code</span>
+          <input type="text" name="shipping_zip" />
+        </label>
+
+        <label class="check" style="margin-top:8px;">
+          <input type="checkbox" id="copyShipping" />
+          <span>Billing address is the same as shipping</span>
+        </label>
+
+        <h3 class="section-title">Billing address</h3>
+        <label>
+          <span>Address</span>
+          <input type="text" name="billing_address" />
+        </label>
+        <label>
+          <span>ZIP code</span>
+          <input type="text" name="billing_zip" />
+        </label>
+
+        <button class="btn primary" type="submit">Save Profile ✅</button>
+      </form>
+      <div id="profileMsg" class="msg"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Profile</p>
+  </footer>
+
+  <script src="/profile.js"></script>
+</body>
+</html>

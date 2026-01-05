@@ -45,6 +45,27 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// Routes: profile
+app.get('/api/profile', requireAuth, (req, res) => {
+  const uid = req.session.user.id;
+  const row = db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(uid);
+  res.json(row || {});
+});
+
+app.post('/api/profile', requireAuth, (req, res) => {
+  const uid = req.session.user.id;
+  const { first_name, last_name, birth_date, shipping_address, shipping_zip, billing_address, billing_zip } = req.body || {};
+  const existing = db.prepare('SELECT 1 FROM user_profiles WHERE user_id = ?').get(uid);
+  if (existing) {
+    db.prepare(`UPDATE user_profiles SET first_name=?, last_name=?, birth_date=?, shipping_address=?, shipping_zip=?, billing_address=?, billing_zip=?, updated_at=datetime('now') WHERE user_id=?`)
+      .run(first_name || null, last_name || null, birth_date || null, shipping_address || null, shipping_zip || null, billing_address || null, billing_zip || null, uid);
+  } else {
+    db.prepare(`INSERT INTO user_profiles (user_id, first_name, last_name, birth_date, shipping_address, shipping_zip, billing_address, billing_zip) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(uid, first_name || null, last_name || null, birth_date || null, shipping_address || null, shipping_zip || null, billing_address || null, billing_zip || null);
+  }
+  const saved = db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(uid);
+  res.json({ ok: true, profile: saved });
+});
 // Database init
 const db = new Database(path.join(__dirname, 'data.sqlite'));
 db.pragma('journal_mode = WAL');
@@ -77,6 +98,19 @@ CREATE TABLE IF NOT EXISTS categories (
   name TEXT NOT NULL UNIQUE,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id INTEGER PRIMARY KEY,
+  first_name TEXT,
+  last_name TEXT,
+  birth_date TEXT,
+  shipping_address TEXT,
+  shipping_zip TEXT,
+  billing_address TEXT,
+  billing_zip TEXT,
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 `);
 
 // Migrations: add category_id to products if missing
@@ -103,6 +137,11 @@ if (!existingAdminUser) {
 // Auth middleware
 function requireAdmin(req, res, next) {
   if (req.session && req.session.user && req.session.user.role === 'admin') return next();
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
@@ -145,6 +184,7 @@ app.post('/api/logout', (req, res) => {
 
 // Routes: settings
 app.get('/api/settings', (req, res) => {
+  res.set('Cache-Control', 'no-store');
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = Object.fromEntries(rows.map(r => [r.key, r.value]));
   res.json(settings);
@@ -156,7 +196,10 @@ app.post('/api/settings', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Invalid siteName' });
   }
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES ("siteName", ?)').run(siteName.trim());
-  res.json({ ok: true });
+  res.set('Cache-Control', 'no-store');
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const settings = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  res.json({ ok: true, settings });
 });
 
 // Routes: categories CRUD (admin)

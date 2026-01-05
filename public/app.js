@@ -41,14 +41,14 @@ window.addEventListener('DOMContentLoaded', () => {
   $('#year').textContent = new Date().getFullYear();
   updateCartCount();
   loadSettings();
-  checkAdminLink();
+  updateAuthNav();
   loadProducts();
   setupCartDrawer();
 });
 
 async function loadSettings() {
   try {
-    const res = await fetch('/api/settings');
+    const res = await fetch('/api/settings', { cache: 'no-store' });
     const data = await res.json();
     if (data.siteName) {
       document.title = `${data.siteName}`;
@@ -58,14 +58,24 @@ async function loadSettings() {
   } catch {}
 }
 
-async function checkAdminLink() {
+async function updateAuthNav() {
   try {
     const res = await fetch('/api/session');
     const data = await res.json();
-    const link = document.getElementById('adminLink');
-    if (link) {
-      if (data.user && data.user.role === 'admin') link.classList.remove('hidden');
-      else link.classList.add('hidden');
+    const authLink = document.getElementById('authLink');
+    const accountLink = document.getElementById('accountLink');
+    if (!authLink || !accountLink) return;
+    if (data.user) {
+      authLink.classList.add('hidden');
+      accountLink.classList.remove('hidden');
+      accountLink.textContent = data.user.username;
+      accountLink.setAttribute('href', data.user.role === 'admin' ? '/admin.html' : '/profile.html');
+      accountLink.title = data.user.role === 'admin' ? 'Go to admin' : 'Go to your profile';
+    } else {
+      authLink.classList.remove('hidden');
+      accountLink.classList.add('hidden');
+      accountLink.textContent = '';
+      accountLink.removeAttribute('href');
     }
   } catch {}
 }

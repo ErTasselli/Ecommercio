@@ -27,6 +27,8 @@ async function onLogin(e) {
     if (res.ok) {
       msg.textContent = '✅ Signed in';
       updateSessionBox();
+      // Redirect to home after successful login
+      window.location.href = '/';
     } else {
       msg.textContent = `❌ ${d.error || 'Error'}`;
     }
@@ -47,6 +49,8 @@ async function onRegister(e) {
     if (res.ok) {
       msg.textContent = `✅ Registered as ${d.user.username} (${d.user.role})`;
       updateSessionBox();
+      // Redirect to home after successful registration
+      window.location.href = '/';
     } else {
       msg.textContent = `❌ ${d.error || 'Error'}`;
     }

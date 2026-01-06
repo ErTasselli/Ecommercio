@@ -55,6 +55,17 @@ async function loadSettings() {
       const el = $('#siteName');
       if (el) el.textContent = data.siteName;
     }
+    // Homepage editable texts
+    const heroTitle = document.getElementById('heroTitle');
+    if (heroTitle && data.heroTitle) heroTitle.innerHTML = data.heroTitle;
+    const heroSubtitle = document.getElementById('heroSubtitle');
+    if (heroSubtitle && data.heroSubtitle) heroSubtitle.innerHTML = data.heroSubtitle;
+    const aboutText = document.getElementById('aboutText');
+    if (aboutText && data.aboutText) aboutText.innerHTML = data.aboutText;
+    const contactText = document.getElementById('contactText');
+    if (contactText && data.contactText) contactText.innerHTML = data.contactText;
+    const footerText = document.getElementById('footerText');
+    if (footerText && data.footerText) footerText.innerHTML = data.footerText;
   } catch {}
 }
 
@@ -71,6 +82,8 @@ async function updateAuthNav() {
       accountLink.textContent = data.user.username;
       accountLink.setAttribute('href', data.user.role === 'admin' ? '/admin.html' : '/profile.html');
       accountLink.title = data.user.role === 'admin' ? 'Go to admin' : 'Go to your profile';
+      // Enable inline editing on homepage if admin
+      if (data.user.role === 'admin') enableInlineEditingForAdmin();
     } else {
       authLink.classList.remove('hidden');
       accountLink.classList.add('hidden');
@@ -78,6 +91,76 @@ async function updateAuthNav() {
       accountLink.removeAttribute('href');
     }
   } catch {}
+}
+
+function getEditableNodes() {
+  return {
+    heroTitle: document.getElementById('heroTitle'),
+    heroSubtitle: document.getElementById('heroSubtitle'),
+    aboutText: document.getElementById('aboutText'),
+    contactText: document.getElementById('contactText'),
+    footerText: document.getElementById('footerText'),
+  };
+}
+
+function enableInlineEditingForAdmin() {
+  // Only on homepage where these nodes exist
+  const nodes = getEditableNodes();
+  const any = Object.values(nodes).some(Boolean);
+  if (!any) return;
+
+  Object.values(nodes).forEach(el => {
+    if (!el) return;
+    el.setAttribute('contenteditable', 'true');
+    el.style.outline = '1px dashed var(--border, #444)';
+    el.style.outlineOffset = '4px';
+    el.title = 'Editable (admin)';
+  });
+
+  if (!document.getElementById('saveHomeTextsBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'saveHomeTextsBtn';
+    btn.textContent = '💾 Salva testi homepage';
+    btn.className = 'btn success';
+    btn.style.position = 'fixed';
+    btn.style.right = '16px';
+    btn.style.bottom = '16px';
+    btn.style.zIndex = '9999';
+    btn.addEventListener('click', saveHomepageTexts);
+    document.body.appendChild(btn);
+  }
+}
+
+async function saveHomepageTexts() {
+  const btn = document.getElementById('saveHomeTextsBtn');
+  const nodes = getEditableNodes();
+  const payload = {};
+  for (const [k, el] of Object.entries(nodes)) {
+    if (el) payload[k] = el.innerHTML.trim();
+  }
+  const original = btn ? btn.textContent : '';
+  if (btn) btn.textContent = 'Saving...';
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      if (btn) btn.textContent = '✅ Salvato';
+      // Refresh to ensure consistency from server
+      loadSettings();
+      setTimeout(() => { if (btn) btn.textContent = original || '💾 Salva testi homepage'; }, 1200);
+    } else {
+      const d = await res.json().catch(() => ({}));
+      if (btn) btn.textContent = '❌ Errore';
+      alert('Errore salvataggio: ' + (d.error || res.status));
+      setTimeout(() => { if (btn) btn.textContent = original || '💾 Salva testi homepage'; }, 1500);
+    }
+  } catch (e) {
+    if (btn) btn.textContent = '❌ Rete';
+    setTimeout(() => { if (btn) btn.textContent = original || '💾 Salva testi homepage'; }, 1500);
+  }
 }
 
 async function loadProducts() {

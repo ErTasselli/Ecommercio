@@ -203,11 +203,18 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.post('/api/settings', requireAdmin, (req, res) => {
-  const { siteName } = req.body;
-  if (typeof siteName !== 'string' || !siteName.trim()) {
-    return res.status(400).json({ error: 'Invalid siteName' });
+  // Allow updating multiple homepage texts at once
+  const payload = req.body || {};
+  const allowedKeys = new Set(['siteName', 'heroTitle', 'heroSubtitle', 'aboutText', 'contactText', 'footerText']);
+  const entries = Object.entries(payload).filter(([k, v]) => allowedKeys.has(k) && typeof v === 'string');
+  if (entries.length === 0) {
+    return res.status(400).json({ error: 'No valid settings provided' });
   }
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('siteName', ?)").run(siteName.trim());
+  const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+  const tx = db.transaction((pairs) => {
+    for (const [k, v] of pairs) stmt.run(k, v.trim());
+  });
+  tx(entries);
   res.set('Cache-Control', 'no-store');
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = Object.fromEntries(rows.map(r => [r.key, r.value]));
@@ -369,10 +376,17 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const site = db.prepare("SELECT value FROM settings WHERE key = 'siteName'").get();
     const siteName = site ? site.value : 'Ecommercio';
 
+    // Allowed countries can be configured via env: STRIPE_ALLOWED_COUNTRIES=IT,FR,DE,...
+    const allowedCountries = (process.env.STRIPE_ALLOWED_COUNTRIES || 'US,CA,GB,IE,FR,DE,ES,IT,PT,NL,BE,LU,AT,CH,DK,SE,NO,FI,IS,PL,CZ,SK,HU,SI,HR,RO,BG,GR,EE,LV,LT,MT,CY,AU,NZ,JP,SG,HK,MX,BR,AR,CL,IL,AE,SA,TR,IN,ZA')
+      .split(',').map(s => s.trim()).filter(Boolean);
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       line_items,
+      // Collect full shipping address (street, city, ZIP) and require billing address
+      shipping_address_collection: { allowed_countries: allowedCountries },
+      billing_address_collection: 'required',
       success_url: `${req.protocol}://${req.get('host')}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.protocol}://${req.get('host')}/cancel.html`,
       metadata: { siteName }

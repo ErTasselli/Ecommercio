@@ -7,6 +7,162 @@ const CART_KEY = 'cart_items_v1';
 function getCart() {
   try { return JSON.parse(localStorage.getItem(CART_KEY)) || []; } catch { return []; }
 }
+
+async function showHomeAdminPanel() {
+  const panel = document.getElementById('homeAdminPanel');
+  if (!panel) return; // Not on home
+  panel.classList.remove('hidden');
+  const msgBox = document.getElementById('homeAdminMsg');
+  // Load categories, products and current layout
+  try {
+    const [catsRes, prodsRes, settingsRes] = await Promise.all([
+      fetch('/api/categories'),
+      fetch('/api/products'),
+      fetch('/api/settings', { cache: 'no-store' })
+    ]);
+    const [categories, products, settings] = await Promise.all([
+      catsRes.json(), prodsRes.json(), settingsRes.json()
+    ]);
+    const layout = parseHomeLayout(settings && settings.homeLayout);
+    renderHomeAdminList(categories, products, layout);
+    bindHomeAdminActions(categories, products);
+  } catch (e) {
+    if (msgBox) msgBox.textContent = '❌ Errore nel caricamento di categorie/prodotti';
+  }
+}
+
+function parseHomeLayout(raw) {
+  if (!raw) return [];
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
+function renderHomeAdminList(categories, products, layout) {
+  const box = document.getElementById('homeCatList');
+  if (!box) return;
+  // Order categories: if layout has selection, use its order then append others unchecked
+  const byId = new Map(categories.map(c => [c.id, c]));
+  const selectedIds = layout.map(c => c.category_id);
+  const ordered = layout
+    .map(c => ({ ...c, cat: byId.get(c.category_id) }))
+    .filter(x => x.cat);
+  const remaining = categories.filter(c => !selectedIds.includes(c.id)).map(c => ({ category_id: c.id, product_ids: [], cat: c }));
+  const full = ordered.concat(remaining);
+
+  box.innerHTML = full.map((entry, idx) => {
+    const c = entry.cat;
+    const catProducts = products.filter(p => p.category_id === c.id);
+    const selected = new Set(entry.product_ids || []);
+    const items = catProducts.map(p => {
+      const img = p.image_url || ('https://picsum.photos/seed/' + p.id + '/120/80');
+      return `
+        <label class="inline" style="gap:8px; align-items:center;">
+          <input type="checkbox" data-prod="${p.id}" ${selected.has(p.id) ? 'checked':''} />
+          <img src="${img}" alt="${escapeHtml(p.title)}" style="width:64px;height:48px;object-fit:cover;border:1px solid var(--border);border-radius:6px;background:#0c0d12;" />
+          <span>${escapeHtml(p.title)}</span>
+        </label>
+      `;
+    }).join('') || '<div class="muted">Nessun prodotto in questa categoria</div>';
+    return `
+      <div class="row" data-row data-cat-id="${c.id}">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="actions" style="display:flex; gap:4px;">
+            <button class="btn ghost" data-move-up title="Sposta su">⬆️</button>
+            <button class="btn ghost" data-move-down title="Sposta giù">⬇️</button>
+          </div>
+          <label class="inline" style="gap:6px;">
+            <input type="checkbox" data-enable-cat ${selectedIds.includes(c.id) ? 'checked':''} />
+            <strong>${escapeHtml(c.name)}</strong>
+          </label>
+        </div>
+        <div class="list" style="margin-top:6px; padding-left:28px;">
+          ${items}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Buttons to move rows up/down
+  box.querySelectorAll('[data-row]').forEach(row => {
+    const up = row.querySelector('[data-move-up]');
+    const down = row.querySelector('[data-move-down]');
+    if (up) up.addEventListener('click', (e) => {
+      e.preventDefault();
+      const prev = row.previousElementSibling;
+      if (prev) row.parentNode.insertBefore(row, prev);
+    });
+    if (down) down.addEventListener('click', (e) => {
+      e.preventDefault();
+      const next = row.nextElementSibling;
+      if (next) row.parentNode.insertBefore(next, row);
+    });
+  });
+}
+
+function collectHomeLayoutFromUI() {
+  const box = document.getElementById('homeCatList');
+  const out = [];
+  if (!box) return out;
+  box.querySelectorAll('[data-row]').forEach(row => {
+    const catId = Number(row.getAttribute('data-cat-id'));
+    const enabled = row.querySelector('[data-enable-cat]').checked;
+    if (!enabled) return;
+    const prods = Array.from(row.querySelectorAll('[data-prod]'))
+      .filter(inp => inp.checked)
+      .map(inp => Number(inp.getAttribute('data-prod')));
+    out.push({ category_id: catId, product_ids: prods });
+  });
+  return out;
+}
+
+function bindHomeAdminActions(categories, products) {
+  const saveBtn = document.getElementById('homeLayoutSave');
+  const resetBtn = document.getElementById('homeLayoutReset');
+  const msgBox = document.getElementById('homeAdminMsg');
+  if (saveBtn && !saveBtn.dataset.bound) {
+    saveBtn.dataset.bound = '1';
+    saveBtn.addEventListener('click', async () => {
+      const layout = collectHomeLayoutFromUI();
+      const payload = { homeLayout: JSON.stringify(layout) };
+      msgBox.textContent = 'Salvataggio layout...';
+      try {
+        const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (res.ok) {
+          msgBox.textContent = '✅ Layout salvato';
+          loadProducts();
+        } else {
+          const d = await res.json().catch(() => ({}));
+          msgBox.textContent = '❌ Errore salvataggio: ' + (d.error || res.status);
+        }
+      } catch {
+        msgBox.textContent = '❌ Errore di rete';
+      }
+    });
+  }
+  if (resetBtn && !resetBtn.dataset.bound) {
+    resetBtn.dataset.bound = '1';
+    resetBtn.addEventListener('click', async () => {
+      msgBox.textContent = 'Ripristino layout...';
+      try {
+        const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ homeLayout: '' }) });
+        if (res.ok) {
+          msgBox.textContent = '✅ Ripristinato';
+          loadProducts();
+          // Ricarica pannello
+          showHomeAdminPanel();
+        } else {
+          const d = await res.json().catch(() => ({}));
+          msgBox.textContent = '❌ Errore: ' + (d.error || res.status);
+        }
+      } catch {
+        msgBox.textContent = '❌ Errore di rete';
+      }
+    });
+  }
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"]+/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]));
+}
 function saveCart(items) {
   localStorage.setItem(CART_KEY, JSON.stringify(items));
   updateCartCount();
@@ -83,7 +239,10 @@ async function updateAuthNav() {
       accountLink.setAttribute('href', data.user.role === 'admin' ? '/admin.html' : '/profile.html');
       accountLink.title = data.user.role === 'admin' ? 'Go to admin' : 'Go to your profile';
       // Enable inline editing on homepage if admin
-      if (data.user.role === 'admin') enableInlineEditingForAdmin();
+      if (data.user.role === 'admin') {
+        enableInlineEditingForAdmin();
+        showHomeAdminPanel();
+      }
     } else {
       authLink.classList.remove('hidden');
       accountLink.classList.add('hidden');
@@ -167,25 +326,63 @@ async function loadProducts() {
   const grid = $('#products');
   grid.innerHTML = '<div class="msg">Loading products...</div>';
   try {
-    const res = await fetch('/api/products');
-    const items = await res.json();
+    const [prodsRes, catsRes, settingsRes] = await Promise.all([
+      fetch('/api/products'),
+      fetch('/api/categories'),
+      fetch('/api/settings', { cache: 'no-store' })
+    ]);
+    const [items, categories, settings] = await Promise.all([
+      prodsRes.json(), catsRes.json(), settingsRes.json()
+    ]);
     if (!Array.isArray(items) || items.length === 0) {
       grid.innerHTML = '<div class="msg">No products available yet. Sign in as admin to create one ➕</div>';
       return;
     }
-    grid.innerHTML = items.map(p => `
-      <div class="product">
-        <img src="${p.image_url || 'https://picsum.photos/seed/' + p.id + '/600/400'}" alt="${p.title}">
-        <div class="info">
-          <div class="title">${p.title}</div>
-          <div class="desc">${(p.description || '').slice(0,120)}</div>
-          <div class="bottom">
-            <div class="price">${fmtEUR(p.price_cents)}</div>
-            <button class="btn primary" data-add="${p.id}">Add to cart 🛒</button>
+    const layout = parseHomeLayout(settings && settings.homeLayout);
+    let html = '';
+    if (layout && layout.length) {
+      const catById = new Map(categories.map(c => [c.id, c]));
+      for (const sec of layout) {
+        const cat = catById.get(sec.category_id);
+        if (!cat) continue;
+        const selectedSet = new Set(sec.product_ids || []);
+        const prods = items.filter(p => p.category_id === sec.category_id && (selectedSet.size === 0 || selectedSet.has(p.id)));
+        if (prods.length === 0) continue;
+        html += `<h4 class="section-title">${escapeHtml(cat.name)}</h4>`;
+        html += '<div class="grid">' + prods.map(p => `
+          <div class="product">
+            <img src="${p.image_url || 'https://picsum.photos/seed/' + p.id + '/600/400'}" alt="${escapeHtml(p.title)}">
+            <div class="info">
+              <div class="title">${escapeHtml(p.title)}</div>
+              <div class="desc">${escapeHtml((p.description || '').slice(0,120))}</div>
+              <div class="bottom">
+                <div class="price">${fmtEUR(p.price_cents)}</div>
+                <button class="btn primary" data-add="${p.id}">Add to cart 🛒</button>
+              </div>
+            </div>
+          </div>
+        `).join('') + '</div>';
+      }
+      if (!html) {
+        html = '<div class="msg">Nessun prodotto selezionato nel layout. Modifica il layout da admin oppure rimuovi il filtro.</div>';
+      }
+      grid.innerHTML = html;
+    } else {
+      // Fallback: mostra tutti i prodotti come prima
+      grid.innerHTML = items.map(p => `
+        <div class="product">
+          <img src="${p.image_url || 'https://picsum.photos/seed/' + p.id + '/600/400'}" alt="${escapeHtml(p.title)}">
+          <div class="info">
+            <div class="title">${escapeHtml(p.title)}</div>
+            <div class="desc">${escapeHtml((p.description || '').slice(0,120))}</div>
+            <div class="bottom">
+              <div class="price">${fmtEUR(p.price_cents)}</div>
+              <button class="btn primary" data-add="${p.id}">Add to cart 🛒</button>
+            </div>
           </div>
         </div>
-      </div>
-    `).join('');
+      `).join('');
+    }
     grid.querySelectorAll('[data-add]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = Number(btn.getAttribute('data-add'));

@@ -33,6 +33,17 @@
 
     <section id="shop">
       <h3 class="section-title">Shop</h3>
+      <!-- Admin tools on home (visible only if admin) -->
+      <div id="homeAdminPanel" class="card hidden" style="margin-bottom:16px;">
+        <h4>Admin: Categorie da mostrare e ordine</h4>
+        <p class="muted">Seleziona le categorie esistenti da visualizzare in home, scegli i prodotti da mostrare e riordina le categorie trascinandole.</p>
+        <div id="homeCatList" class="list"></div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <button id="homeLayoutSave" class="btn success">💾 Salva layout</button>
+          <button id="homeLayoutReset" class="btn ghost">Ripristina (mostra tutto)</button>
+        </div>
+        <div id="homeAdminMsg" class="msg"></div>
+      </div>
       <div id="products" class="grid"></div>
     </section>
 

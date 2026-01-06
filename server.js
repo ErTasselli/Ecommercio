@@ -205,14 +205,20 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings', requireAdmin, (req, res) => {
   // Allow updating multiple homepage texts at once
   const payload = req.body || {};
-  const allowedKeys = new Set(['siteName', 'heroTitle', 'heroSubtitle', 'aboutText', 'contactText', 'footerText']);
-  const entries = Object.entries(payload).filter(([k, v]) => allowedKeys.has(k) && typeof v === 'string');
+  const allowedKeys = new Set(['siteName', 'heroTitle', 'heroSubtitle', 'aboutText', 'contactText', 'footerText', 'homeLayout']);
+  const entries = Object.entries(payload).filter(([k, v]) => allowedKeys.has(k) && v !== undefined && v !== null);
   if (entries.length === 0) {
     return res.status(400).json({ error: 'No valid settings provided' });
   }
   const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
   const tx = db.transaction((pairs) => {
-    for (const [k, v] of pairs) stmt.run(k, v.trim());
+    for (const [k, v] of pairs) {
+      let val;
+      if (typeof v === 'string') val = v; else {
+        try { val = JSON.stringify(v); } catch { val = String(v); }
+      }
+      stmt.run(k, String(val));
+    }
   });
   tx(entries);
   res.set('Cache-Control', 'no-store');

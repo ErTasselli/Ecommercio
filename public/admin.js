@@ -65,7 +65,13 @@ async function saveSettings(e) {
   msg.textContent = 'Saving...';
   try {
     const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ siteName }) });
-    if (res.ok) msg.textContent = '✅ Saved'; else msg.textContent = '❌ Save error';
+    if (res.ok) {
+      msg.textContent = '✅ Saved';
+      // Reload settings to reflect the current value in the input
+      loadSettings();
+    } else {
+      msg.textContent = '❌ Save error';
+    }
   } catch { msg.textContent = '❌ Network error'; }
 }
 

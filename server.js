@@ -120,6 +120,13 @@ if (!hasCategoryId) {
   db.prepare('ALTER TABLE products ADD COLUMN category_id INTEGER').run();
 }
 
+// Migration: add banned flag to users if missing
+const userColumns = db.prepare("PRAGMA table_info(users)").all();
+const hasBanned = userColumns.some(c => c.name === 'banned');
+if (!hasBanned) {
+  db.prepare("ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0").run();
+}
+
 // Default site name if not set
 const siteNameRow = db.prepare("SELECT value FROM settings WHERE key = 'siteName'").get();
 if (!siteNameRow) {
@@ -171,6 +178,7 @@ app.post('/api/login', (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Missing username or password' });
   const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!row) return res.status(401).json({ error: 'Invalid credentials' });
+  if (row.banned) return res.status(403).json({ error: 'User is banned' });
   const ok = bcrypt.compareSync(password, row.password_hash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   const user = { id: row.id, username: row.username, role: row.role };
@@ -195,7 +203,7 @@ app.post('/api/settings', requireAdmin, (req, res) => {
   if (typeof siteName !== 'string' || !siteName.trim()) {
     return res.status(400).json({ error: 'Invalid siteName' });
   }
-  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES ("siteName", ?)').run(siteName.trim());
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('siteName', ?)").run(siteName.trim());
   res.set('Cache-Control', 'no-store');
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = Object.fromEntries(rows.map(r => [r.key, r.value]));
@@ -287,6 +295,45 @@ app.delete('/api/products/:id', requireAdmin, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Product not found' });
   db.prepare('DELETE FROM products WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// Admin: users management
+app.get('/api/admin/users', requireAdmin, (_req, res) => {
+  const rows = db.prepare(`
+    SELECT u.id, u.username, u.role, u.created_at, u.banned,
+           p.first_name, p.last_name, p.birth_date, p.shipping_address, p.shipping_zip, p.billing_address, p.billing_zip, p.updated_at as profile_updated_at
+    FROM users u
+    LEFT JOIN user_profiles p ON p.user_id = u.id
+    ORDER BY datetime(u.created_at) DESC
+  `).all();
+  // Purchases placeholder: 0 until orders support is added
+  const users = rows.map(r => ({ ...r, purchases: 0 }));
+  res.json(users);
+});
+
+app.post('/api/admin/users/:id/ban', requireAdmin, (req, res) => {
+  const targetId = Number(req.params.id);
+  const banned = req.body && (req.body.banned === true || req.body.banned === 1 || req.body.banned === '1');
+  const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+  if (!existing) return res.status(404).json({ error: 'User not found' });
+  db.prepare('UPDATE users SET banned = ? WHERE id = ?').run(banned ? 1 : 0, targetId);
+  const updated = db.prepare('SELECT id, username, role, created_at, banned FROM users WHERE id = ?').get(targetId);
+  res.json({ ok: true, user: updated });
+});
+
+app.post('/api/admin/users/:id/role', requireAdmin, (req, res) => {
+  const targetId = Number(req.params.id);
+  const { role } = req.body || {};
+  if (role !== 'admin' && role !== 'user') return res.status(400).json({ error: 'Invalid role' });
+  const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.role === 'admin' && role === 'user') {
+    const adminCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'admin'").get().c;
+    if (adminCount <= 1) return res.status(400).json({ error: 'Cannot remove the last admin' });
+  }
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+  const updated = db.prepare('SELECT id, username, role, created_at, banned FROM users WHERE id = ?').get(targetId);
+  res.json({ ok: true, user: updated });
 });
 
 // Stripe Checkout

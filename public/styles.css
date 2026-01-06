@@ -1,3 +1,12 @@
+/* Carousel */
+.carousel { position: relative; }
+.carousel-viewport { overflow: hidden; }
+.carousel-track { display: flex; gap: 16px; scroll-behavior: smooth; padding: 4px 2px; }
+.carousel-item { flex: 0 0 260px; }
+.carousel .carousel-btn { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.35); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 10px; cursor: pointer; z-index: 10; }
+.carousel .carousel-btn.left { left: -6px; }
+.carousel .carousel-btn.right { right: -6px; }
+.carousel .carousel-btn:hover { background: rgba(255,255,255,0.08); }
 /* Font & base */
 :root {
   --bg: #0e0f13;
@@ -41,7 +50,9 @@ body {
 .hero { background: linear-gradient(135deg, rgba(108,92,231,.15), rgba(0,209,178,.15));
   border: 1px solid var(--border); border-radius: 16px; padding: 28px; box-shadow: var(--shadow); }
 .hero h2 { margin-top: 0; }
-.section-title { margin: 28px 0 12px; font-size: 18px; color: var(--primary-2); }
+.section-title { margin: 24px 0 10px; font-size: 18px; color: var(--primary-2); }
+/* Category section spacing */
+.cat-section > .section-title { margin-top: 28px; margin-bottom: 8px; }
 
 .footer { text-align: center; padding: 30px 16px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 40px; }
 

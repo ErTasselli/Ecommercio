@@ -348,25 +348,54 @@ async function loadProducts() {
         const selectedSet = new Set(sec.product_ids || []);
         const prods = items.filter(p => p.category_id === sec.category_id && (selectedSet.size === 0 || selectedSet.has(p.id)));
         if (prods.length === 0) continue;
+        html += `<section class="cat-section">`;
         html += `<h4 class="section-title">${escapeHtml(cat.name)}</h4>`;
-        html += '<div class="grid">' + prods.map(p => `
-          <div class="product">
-            <img src="${p.image_url || 'https://picsum.photos/seed/' + p.id + '/600/400'}" alt="${escapeHtml(p.title)}">
-            <div class="info">
-              <div class="title">${escapeHtml(p.title)}</div>
-              <div class="desc">${escapeHtml((p.description || '').slice(0,120))}</div>
-              <div class="bottom">
-                <div class="price">${fmtEUR(p.price_cents)}</div>
-                <button class="btn primary" data-add="${p.id}">Add to cart 🛒</button>
+        if (prods.length > 4) {
+          // Carousel rendering
+          html += '<div class="carousel">\
+            <button class="carousel-btn left" data-car-left>◀</button>\
+            <div class="carousel-viewport">\
+              <div class="carousel-track">' + prods.map(p => `
+                <div class="carousel-item">
+                  <div class="product">
+                    <img src="${p.image_url || 'https://picsum.photos/seed/' + p.id + '/600/400'}" alt="${escapeHtml(p.title)}">
+                    <div class="info">
+                      <div class="title">${escapeHtml(p.title)}</div>
+                      <div class="desc">${escapeHtml((p.description || '').slice(0,120))}</div>
+                      <div class="bottom">
+                        <div class="price">${fmtEUR(p.price_cents)}</div>
+                        <button class="btn primary" data-add="${p.id}">Add to cart 🛒</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `).join('') + '</div>\
+            </div>\
+            <button class="carousel-btn right" data-car-right>▶</button>\
+          </div>';
+        } else {
+          // Simple grid rendering
+          html += '<div class="grid">' + prods.map(p => `
+            <div class="product">
+              <img src="${p.image_url || 'https://picsum.photos/seed/' + p.id + '/600/400'}" alt="${escapeHtml(p.title)}">
+              <div class="info">
+                <div class="title">${escapeHtml(p.title)}</div>
+                <div class="desc">${escapeHtml((p.description || '').slice(0,120))}</div>
+                <div class="bottom">
+                  <div class="price">${fmtEUR(p.price_cents)}</div>
+                  <button class="btn primary" data-add="${p.id}">Add to cart 🛒</button>
+                </div>
               </div>
             </div>
-          </div>
-        `).join('') + '</div>';
+          `).join('') + '</div>';
+        }
+        html += `</section>`;
       }
       if (!html) {
         html = '<div class="msg">Nessun prodotto selezionato nel layout. Modifica il layout da admin oppure rimuovi il filtro.</div>';
       }
       grid.innerHTML = html;
+      initCarousels();
     } else {
       // Fallback: mostra tutti i prodotti come prima
       grid.innerHTML = items.map(p => `
@@ -394,6 +423,23 @@ async function loadProducts() {
     console.error(e);
     grid.innerHTML = '<div class="msg">Error loading products.</div>';
   }
+}
+
+function initCarousels() {
+  document.querySelectorAll('.carousel').forEach(car => {
+    const viewport = car.querySelector('.carousel-viewport');
+    const track = car.querySelector('.carousel-track');
+    const left = car.querySelector('[data-car-left]');
+    const right = car.querySelector('[data-car-right]');
+    if (!viewport || !track) return;
+    const getStep = () => Math.max(240, Math.min(viewport.clientWidth * 0.9, 600));
+    if (left) left.addEventListener('click', () => {
+      viewport.scrollBy({ left: -getStep(), behavior: 'smooth' });
+    });
+    if (right) right.addEventListener('click', () => {
+      viewport.scrollBy({ left: getStep(), behavior: 'smooth' });
+    });
+  });
 }
 
 // Cart drawer

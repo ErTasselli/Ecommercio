@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Checkout · Ecommercio</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <span class="logo">🛍️</span>
+      <h1>Checkout</h1>
+    </div>
+    <nav class="nav">
+      <a href="/" class="btn ghost">🏠 Home</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Your order</h2>
+      <div id="checkoutItems" class="list"></div>
+      <div class="inline" style="justify-content: space-between; align-items:center; margin-top:10px;">
+        <div class="total">
+          <span>Total</span>
+          <strong id="checkoutTotal">€0.00</strong>
+        </div>
+        <div>
+          <button id="payBtn" class="btn success">Pay with Stripe 💳</button>
+        </div>
+      </div>
+      <div id="checkoutMsg" class="msg"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Secure payment via Stripe</p>
+  </footer>
+
+  <script src="/checkout.js"></script>
+</body>
+</html>

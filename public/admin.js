@@ -151,6 +151,7 @@ async function loadProducts() {
           <input type="text" value="${escapeHtml(p.title)}" data-field="title" data-id="${p.id}">
           <input class="price-eur" type="number" step="0.01" value="${(p.price_cents/100).toFixed(2)}" data-field="price">
           <select data-field="category_id">${opts}</select>
+          <input type="text" placeholder="price_..." value="${escapeHtml(p.stripe_price_id || '')}" data-field="stripe_price_id">
           <div class="actions">
             <button class="btn success" data-save="${p.id}">💾</button>
             <button class="btn danger" data-del="${p.id}">🗑️</button>

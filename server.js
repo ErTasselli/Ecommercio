@@ -119,6 +119,10 @@ const hasCategoryId = productColumns.some(c => c.name === 'category_id');
 if (!hasCategoryId) {
   db.prepare('ALTER TABLE products ADD COLUMN category_id INTEGER').run();
 }
+const hasStripePriceId = productColumns.some(c => c.name === 'stripe_price_id');
+if (!hasStripePriceId) {
+  db.prepare('ALTER TABLE products ADD COLUMN stripe_price_id TEXT').run();
+}
 
 // Migration: add banned flag to users if missing
 const userColumns = db.prepare("PRAGMA table_info(users)").all();
@@ -258,32 +262,33 @@ app.get('/api/products/:id', (req, res) => {
 });
 
 app.post('/api/products', requireAdmin, upload.single('image'), (req, res) => {
-  const { title, description, price_cents, category_id } = req.body;
+  const { title, description, price_cents, category_id, stripe_price_id } = req.body;
   if (!title || price_cents === undefined) return res.status(400).json({ error: 'Missing data' });
   const price = Number(price_cents);
   if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: 'Invalid price' });
   const image_url = req.file ? `/uploads/${req.file.filename}` : '';
   const catId = category_id ? Number(category_id) : null;
-  const info = db.prepare('INSERT INTO products (title, description, price_cents, image_url, category_id) VALUES (?, ?, ?, ?, ?)')
-    .run(title, description || '', price, image_url, catId);
+  const info = db.prepare('INSERT INTO products (title, description, price_cents, image_url, category_id, stripe_price_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(title, description || '', price, image_url, catId, stripe_price_id || null);
   const created = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(created);
 });
 
 app.put('/api/products/:id', requireAdmin, upload.single('image'), (req, res) => {
-  const { title, description, price_cents, image_url, category_id } = req.body;
+  const { title, description, price_cents, image_url, category_id, stripe_price_id } = req.body;
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Product not found' });
   const price = price_cents !== undefined ? Number(price_cents) : existing.price_cents;
   if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: 'Invalid price' });
   const newImage = req.file ? `/uploads/${req.file.filename}` : undefined;
-  db.prepare('UPDATE products SET title = ?, description = ?, price_cents = ?, image_url = ?, category_id = ? WHERE id = ?')
+  db.prepare('UPDATE products SET title = ?, description = ?, price_cents = ?, image_url = ?, category_id = ?, stripe_price_id = ? WHERE id = ?')
     .run(
       title !== undefined ? title : existing.title,
       description !== undefined ? description : existing.description,
       price,
       newImage !== undefined ? newImage : (image_url !== undefined ? image_url : existing.image_url),
       category_id !== undefined ? (category_id ? Number(category_id) : null) : existing.category_id,
+      stripe_price_id !== undefined ? (stripe_price_id || null) : existing.stripe_price_id,
       req.params.id
     );
   const updated = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
@@ -347,13 +352,17 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const line_items = items.map(({ id, quantity }) => {
       const p = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
       if (!p) throw new Error('Product not found: ' + id);
+      const qty = Math.max(1, Number(quantity || 1));
+      if (p.stripe_price_id) {
+        return { price: p.stripe_price_id, quantity: qty };
+      }
       return {
         price_data: {
           currency: 'eur',
           unit_amount: p.price_cents,
           product_data: { name: p.title, description: p.description || undefined },
         },
-        quantity: Math.max(1, Number(quantity || 1)),
+        quantity: qty,
       };
     });
 

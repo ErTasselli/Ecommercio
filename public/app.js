@@ -164,19 +164,7 @@ function renderCart() {
   box.querySelectorAll('[data-qty]').forEach(inp => inp.addEventListener('change', () => changeQty(Number(inp.getAttribute('data-qty')), Number(inp.value || 1))));
 }
 
-// Checkout Stripe
-$('#checkoutBtn').addEventListener('click', async () => {
-  const items = getCart().map(i => ({ id: i.id, quantity: i.quantity }));
-  if (!items.length) return alert('Cart is empty');
-  try {
-    const res = await fetch('/api/create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
-    const data = await res.json();
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
-      alert(data.error || 'Checkout error');
-    }
-  } catch (e) {
-    alert('Network error during checkout');
-  }
+// Checkout: navigate to dedicated page
+$('#checkoutBtn').addEventListener('click', () => {
+  window.location.href = '/checkout.html';
 });
